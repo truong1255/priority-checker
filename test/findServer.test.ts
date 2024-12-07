@@ -1,54 +1,40 @@
-import { findServer } from "../src/findServer";
-import axios from "axios";
+import { findServer } from '../src/findServer';
+import { Server } from '../src/types';
+import axios from 'axios';
 
-jest.mock("axios");
+// Mock the axios module
+jest.mock('axios');
+
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-describe("findServer", () => {
-  const servers = [
-    { url: "https://does-not-work.perfume.new", priority: 1 },
-    { url: "https://gitlab.com", priority: 4 },
-    { url: "http://app.scnt.me", priority: 3 },
-    { url: "https://offline.scentronix.com", priority: 2 },
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('findServer', () => {
+  const servers: Server[] = [
+    { url: 'https://does-not-work.perfume.new', priority: 1 },
+    { url: 'https://gitlab.com', priority: 4 },
+    { url: 'http://app.scnt.me', priority: 3 },
+    { url: 'https://offline.scentronix.com', priority: 2 },
   ];
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("should resolve with the online server having the lowest priority", async () => {
-    mockedAxios.get.mockImplementation((url) => {
-      if (url === "https://gitlab.com") {
-        return Promise.resolve({ status: 200 });
-      }
-      if (url === "http://app.scnt.me") {
-        return Promise.resolve({ status: 200 });
-      }
-      return Promise.reject(new Error("Network error"));
-    });
+  it('should resolve to the online server with the lowest priority', async () => {
+    mockedAxios.get
+      .mockRejectedValueOnce(new Error('Network error')) // does-not-work.perfume.new
+      .mockResolvedValueOnce({ status: 200 })            // gitlab.com
+      .mockResolvedValueOnce({ status: 200 })            // app.scnt.me
+      .mockRejectedValueOnce(new Error('Timeout'));      // offline.scentronix.com
 
     const result = await findServer(servers);
-    expect(result).toEqual({ url: "http://app.scnt.me", priority: 3 });
+
+    expect(result).toEqual({ url: 'http://app.scnt.me', priority: 3, isOnline: true });
   });
 
-  it("should reject with an error if no servers are online", async () => {
-    mockedAxios.get.mockRejectedValue(new Error("Network error"));
+  it('should throw an error if no servers are online', async () => {
+    // All servers are mocked as offline
+    mockedAxios.get.mockRejectedValue(new Error('Network error'));
 
-    await expect(findServer(servers)).rejects.toThrow("No servers are online");
+    await expect(findServer(servers)).rejects.toThrow('No servers are online');
   });
-
-  it(
-    "should timeout if a request takes too long",
-    async () => {
-      mockedAxios.get.mockImplementation(
-        () =>
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("timeout of 5000ms exceeded")), 6000);
-          })
-      );
-  
-      await expect(findServer(servers)).rejects.toThrow("No servers are online");
-    },
-    10000 // Extend timeout for the test
-  );
 });

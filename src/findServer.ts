@@ -1,38 +1,27 @@
-import axios from "axios";
-
-interface Server {
-  url: string;
-  priority: number;
-}
+import { Server } from './types';
+import { isServerOnline } from './serverChecker';
 
 /**
- * Function to find the online server with the lowest priority
- * @param servers - List of servers to check
- * @returns Promise<Server> - Resolves with the online server having the lowest priority or rejects with an error
- */
-export async function findServer(servers: Server[]): Promise<Server> {
-  const TIMEOUT = 5000; // Timeout in milliseconds
+* Finds the online server with the lowest priority.
+* @param servers Array of servers.
+* @returns A Promise that resolves to the lowest priority online server.
+*/
+export const findServer = async (servers: Server[]): Promise<Server> => {
+  const serverStatusPromises = servers.map(async (server) => {
+    const isOnline = await isServerOnline(server.url);
+    return { ...server, isOnline };
+  });
 
-  const serverChecks = servers.map((server) =>
-    axios
-      .get(server.url, { timeout: TIMEOUT })
-      .then((response) => {
-        if (response.status >= 200 && response.status < 300) {
-          return server; // Server is online
-        }
-        throw new Error("Server responded with non-2xx status code");
-      })
-      .catch(() => null) // Treat failed requests as offline
-  );
+  const serverStatuses = await Promise.all(serverStatusPromises);
 
-  const results = await Promise.all(serverChecks);
-  const onlineServers = results.filter((server): server is Server => server !== null);
+  const onlineServers = serverStatuses.filter((server) => server.isOnline);
 
   if (onlineServers.length === 0) {
-    throw new Error("No servers are online");
+    throw new Error('No servers are online');
   }
 
-  return onlineServers.reduce((lowest, current) =>
-    current.priority < lowest.priority ? current : lowest
-  );
-}
+  // Sort by priority (ascending) and return the server with the lowest priority
+  onlineServers.sort((a, b) => a.priority - b.priority);
+
+  return onlineServers[0];
+};
